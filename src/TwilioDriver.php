@@ -26,7 +26,7 @@ abstract class TwilioDriver extends HttpDriver
     public function buildPayload(Request $request)
     {
         $this->payload = $request->request->all();
-        $this->requestUri = $request->getUri();
+        $this->requestUri = $this->requestUri();
         $this->event = Collection::make($this->payload);
         $this->config = Collection::make($this->config->get('twilio', []));
         $this->signature = $request->headers->get('X-Twilio-Signature');

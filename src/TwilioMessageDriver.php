@@ -3,6 +3,8 @@
 namespace BotMan\Drivers\Twilio;
 
 use Twilio\Twiml;
+use Twilio\Rest\Client as Twilio;
+use Illuminate\Support\Facades\Cache;
 use BotMan\BotMan\Messages\Incoming\Answer;
 use BotMan\BotMan\Messages\Outgoing\Question;
 use Symfony\Component\HttpFoundation\Response;
@@ -10,6 +12,7 @@ use BotMan\BotMan\Messages\Attachments\Location;
 use BotMan\BotMan\Interfaces\DriverEventInterface;
 use BotMan\BotMan\Messages\Incoming\IncomingMessage;
 use BotMan\BotMan\Messages\Outgoing\OutgoingMessage;
+use Illuminate\Support\Facades\Log;
 
 class TwilioMessageDriver extends TwilioDriver
 {
@@ -90,6 +93,7 @@ class TwilioMessageDriver extends TwilioDriver
         }
 
         $parameters['text'] = $text;
+        $parameters['recipient'] = $matchingMessage->getSender();
 
         return $parameters;
     }
@@ -100,6 +104,12 @@ class TwilioMessageDriver extends TwilioDriver
      */
     public function sendPayload($payload)
     {
+        if (!$this->requestUri) {
+            Log::debug('sending SMS. aborting Twiml');
+            $response = $this->sendSms($payload);
+            return Response::create('Why Do I Have To Do This')->send();
+        }
+        
         if (isset($payload['twiml'])) {
             return Response::create((string) $payload['twiml'])->send();
         }
@@ -117,6 +127,26 @@ class TwilioMessageDriver extends TwilioDriver
             $message->media($payload['media']);
         }
 
-        return Response::create((string) $response)->send();
+        $finalResponse = Response::create((string) $response);
+        $sentResponse = $finalResponse->send();
+
+        return $sentResponse;
+    }
+
+    public function sendSms($payload)
+    {
+        $sid = config('botman.twilio.sid');
+        $token = config('botman.twilio.token');
+        $client = new Twilio($sid, $token);
+
+        Cache::store('redis')->put('message', 'sent', 10);
+
+        return $client->messages->create(
+            $payload['recipient'],
+            array(
+                "from" => config('botman.twilio.fromNumber'),
+                "body" => $payload['text'],
+            )
+        );
     }
 }
